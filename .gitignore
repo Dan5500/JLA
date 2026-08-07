@@ -1,0 +1,24 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Testing / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
+.vscode/
+.DS_Store
+
+
+# note from chatgpt: 
+#   you may eventually want to commit .vscode/ if you put useful project-wide VS Code settings in it. 
+#   For now, ignoring it is perfectly fine.
