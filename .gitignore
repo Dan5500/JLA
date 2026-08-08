@@ -18,6 +18,8 @@ __pycache__/
 .vscode/
 .DS_Store
 
+# Other
+temp.txt
 
 # note from chatgpt: 
 #   you may eventually want to commit .vscode/ if you put useful project-wide VS Code settings in it. 

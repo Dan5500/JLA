@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "JLA"
+version = "0.1.0"
+description = "Jarvis-like personal AI assistant for productivity"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "PyYAML",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jla*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

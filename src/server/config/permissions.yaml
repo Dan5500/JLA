@@ -1,0 +1,14 @@
+levels:
+  0:
+    name: "read"
+    permission-required: false
+  1:
+    name: "auto_write"
+    permission-required: false
+  2:
+    name: "approval_required"
+    permission-required: true
+  3:
+    name: "restricted"
+    permission-required: true
+    enabled: false

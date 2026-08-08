@@ -1,0 +1,12 @@
+models:
+  local_fast:
+    provider: ollama
+    model: null
+
+  cloud_general:
+    provider: null
+    model: null
+  
+  cloud_reasoning:
+    provider: null
+    model: null

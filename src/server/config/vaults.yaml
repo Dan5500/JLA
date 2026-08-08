@@ -1,0 +1,10 @@
+vaults:
+  personal:
+    name: "personal"
+    path: null
+    read-only: true
+    
+  assistant-memory:
+    name: "memory"
+    path: null
+    read-only: false
