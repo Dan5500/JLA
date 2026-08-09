@@ -18,7 +18,7 @@ def setup_logging(level: str = "INFO") -> None:
 
     # Determine paths: logs/ should live under src/server/logs
     script_dir = pathlib.Path(__file__).resolve().parent
-    server_dir = script_dir.parents[1]
+    server_dir = script_dir.parent
     logs_dir = server_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_file = logs_dir / "jla.log"
