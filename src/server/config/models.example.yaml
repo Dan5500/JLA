@@ -4,9 +4,9 @@ models:
     model: null
 
   cloud_general:
-    provider: null
-    model: null
-  
+    provider: openai
+    model: gpt-4o-mini
+
   cloud_reasoning:
-    provider: null
-    model: null
+    provider: openai
+    model: gpt-4o

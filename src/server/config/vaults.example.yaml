@@ -1,0 +1,12 @@
+vaults:
+  personal:
+    name: "personal"
+    path: "/path/to/personal/vault"
+    read: true
+    write: false
+
+  assistant-memory:
+    name: "assistant-memory"
+    path: "/path/to/assistant-memory/vault"
+    read: true
+    write: true

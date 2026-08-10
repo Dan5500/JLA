@@ -1,2 +1,6 @@
+config/app.yaml
+config/vaults.yaml
+config/models.yaml
+config/permissions.yaml
 .env
 logs/
