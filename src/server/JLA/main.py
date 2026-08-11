@@ -3,13 +3,15 @@ import logging
 import os
 import sys
 import pathlib
-import readline
+import readline # enable arrow key usage
 import pytest
+import shlex
 
 from logging_config import setup_logging
-from retrieval.vault_handling import read_vault_note
-from JLA.config import ConfigFileMissingError, ConfigMalformedError
-from config.vaults import get_readable_vault_path, list_readable_vault_names
+from retrieval.vault_reading import read_vault_note
+from config import ConfigFileMissingError, ConfigMalformedError
+from permissions import get_readable_vault_path, get_writable_vault_path, list_readable_vault_names, list_writable_vault_names
+from memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
 
 script_dir = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = script_dir.parent
@@ -28,7 +30,12 @@ def main() -> None:
 
     while alive:
         command = input("> ")
-        command = command.split()
+        try:
+            command = shlex.split(command)
+        except ValueError as e:
+            logger.error("Error parsing command: %s", e)
+            # print(f"Error parsing command: {e}")
+            continue
         try:
             match command[0]:
                 # "help" command to display available commands
@@ -41,10 +48,15 @@ def main() -> None:
                         "\t\t-f - force exit without confirmation\n"
                         "\tquit [-f] - alias for exit\n"
                         "\tclose [-f] - alias for exit\n"
-                        "\ttest <command> - runs test commands\n"
+                        "\ttest <command/test> - runs test commands\n"
                         "\t\tlist - lists available tests\n"
                         "\t\ttest-all - runs the full test suite\n"
                         "\tread <command> - reads data from specified source\n"
+                        "\t\tvault <vault_name> <note_relative_path> - reads a note from the specified vault\n"
+                        "\twrite <command> - writes data to specified destination\n"
+                        "\t\tvault <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
+                        "\tedit <command> - edit an existing note in the vault\n"
+                        "\t\tvault <vault_name> <note_relative_path> <line_number> <new_content> - edits a specific line in a note\n"
                     )
                 # "exit" or "quit" command to exit the server
                 case "exit" | "quit" | "close":
@@ -76,17 +88,21 @@ def main() -> None:
                                     "Available test groups:\n"
                                     "\tdatabase - database tests in tests/test_database.py\n"
                                     "\tvault - vault handling tests in tests/test_vault.py\n"
+                                    "\tconfig - configuration loading tests in tests/test_config.py\n"
                                     "\ttest-all - runs the full test suite\n"
                                 )
                             case "test-all":
-                                pytest.main([str(TESTS_DIR)])
                                 print("Running all tests...")
+                                pytest.main([str(TESTS_DIR)])
                             case "vault":
-                                pytest.main([str(TESTS_DIR / "test_vault.py")])
                                 print("Running vault tests from tests/test_vault.py...")
+                                pytest.main([str(TESTS_DIR / "test_vault.py")])
                             case "database":
-                                pytest.main([str(TESTS_DIR / "test_database.py")])
                                 print("Running database tests from tests/test_database.py...")
+                                pytest.main([str(TESTS_DIR / "test_database.py")])
+                            case "config":
+                                print("Running config tests from tests/test_config.py...")
+                                pytest.main([str(TESTS_DIR / "test_config.py")])
                             case _:
                                 print(f"Unknown test command: {command[1]}")
                     except IndexError:
@@ -128,6 +144,93 @@ def main() -> None:
                                 print(f"Unknown read command: {command[1]}")
                     except IndexError:
                         print("Usage: read <read/command> [args]\n\nCommands:\n\tvault - reads a note from the vault\nArguments:\n\tvault <vault_name> <note_relative_path> - reads the specified note from the configured vault")
+
+                case "write":
+                    try:
+                        match command[1]:
+                            case "vault":
+                                try:
+                                    vault_name = command[2]
+                                    note_path = command[3]
+                                    content = command[4]
+
+                                    raiseit = False # there's def a better way to do this
+                                    try:
+                                        command[5]
+                                        raiseit = True
+                                        # make sure the user uses quotes around the content; 
+                                        # if they don't, this will raise an IndexError 
+                                        # we can catch it to give a better error message
+                                    except IndexError:
+                                        pass
+                                    if raiseit:
+                                        raise IndexError
+                                    write_vault_note(get_writable_vault_path(vault_name), note_path, content)
+                                    print(f"Wrote note to {vault_name}/{note_path}")
+                                except KeyError:
+                                    print(f"Unknown vault: {vault_name}")
+                                    print("Available writable vaults:")
+                                    for vault_name in list_writable_vault_names():
+                                        print(f"\t{vault_name}")
+                                except PermissionError:
+                                    print(f"Write access is disabled for vault: {vault_name}")
+                                except ValueError:
+                                    print("Invalid note path: path traversal outside the vault is not allowed.")
+                                except IndexError:
+                                    print("Usage: write vault <vault_name> <note_relative_path> <content>")
+                                    print("--- MAKE SURE TO USE QUOTES AROUND THE CONTENT AND NOTE PATH IF THEY CONTAIN SPACES! ---")
+                                    print("Available writable vaults:")
+                                    for vault_name in list_writable_vault_names():
+                                        print(f"\t{vault_name}")
+                                    continue
+                            case _:
+                                print(f"Unknown write command: {command[1]}")
+                    except IndexError:
+                        print("Usage: write <write/command> [args]\n\nCommands:\n\tvault - writes a note to the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <content> - writes the specified content to the specified note in the configured vault")
+
+                case "edit":
+                    try:
+                        match command[1]:
+                            case "vault":
+                                try:
+                                    vault_name = command[2]
+                                    note_path = command[3]
+                                    line_number = int(command[4])
+                                    new_content = command[5]
+
+                                    raiseit = False # there's def a better way to do this
+                                    try:
+                                        command[6]
+                                        raiseit = True
+                                    except IndexError:
+                                        pass
+                                    if raiseit:
+                                        raise IndexError
+                                    edit_vault_note(get_writable_vault_path(vault_name), note_path, line_number-1, new_content)
+                                    print(f"Edited line {line_number} of note {vault_name}/{note_path}")
+                                except KeyError:
+                                    print(f"Unknown vault: {vault_name}")
+                                    print("Available writable vaults:")
+                                    for vault_name in list_writable_vault_names():
+                                        print(f"\t{vault_name}")
+                                except PermissionError:
+                                    print(f"Write access is disabled for vault: {vault_name}")
+                                except ValueError:
+                                    print("Invalid note path: path traversal outside the vault is not allowed.")
+                                except FileNotFoundError:
+                                    print(f"Note not found: {note_path}")
+                                except LineIndexError:
+                                    print(f"Line index out of bounds for editing: {note_path}")
+                                    print("Make sure the line number is valid for the specified note.")
+                                except IndexError:
+                                    print("Usage: edit vault <vault_name> <note_relative_path> <line_number> <new_content>")
+                                    print("--- MAKE SURE TO USE QUOTES AROUND THE CONTENT AND NOTE PATH IF THEY CONTAIN SPACES! ---")
+                                    print("Available writable vaults:")
+                                    for vault_name in list_writable_vault_names():
+                                        print(f"\t{vault_name}")
+                    except IndexError:
+                        print("Usage: edit <edit/command> [args]\n\nCommands:\n\tvault - edits a note in the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <line_number> <new_content> - edits the specified line in the specified note in the configured vault")
+
                 case _:
                     logger.debug("Unknown CLI command received: %s", command)
                     print(f"Unknown command: {command}")

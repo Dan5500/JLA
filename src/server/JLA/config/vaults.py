@@ -1,3 +1,4 @@
+import errno
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,30 @@ def get_vault(vault_name: str) -> dict[str, Any]:
     return vault
 
 
+def _get_vault_path(vault_name: str, *, permission_name: str) -> Path:
+    vault = get_vault(vault_name)
+    if vault.get(permission_name) is not True:
+        action = "read" if permission_name == "read" else "write"
+        raise PermissionError(
+            errno.EACCES,
+            f"{action.title()} access is disabled for vault: {vault_name}",
+        )
+
+    path = vault.get("path")
+    if not isinstance(path, str):
+        raise ValueError(f"Invalid path for vault: {vault_name}")
+
+    return Path(path).resolve()
+
+
+def get_readable_vault_path(vault_name: str) -> Path:
+    return _get_vault_path(vault_name, permission_name="read")
+
+
+def get_writable_vault_path(vault_name: str) -> Path:
+    return _get_vault_path(vault_name, permission_name="write")
+
+
 def list_readable_vault_names() -> list[str]:
     vaults = load_vault_config()
     return sorted(
@@ -41,24 +66,10 @@ def list_readable_vault_names() -> list[str]:
     )
 
 
-def get_vault_path(vault_name: str) -> Path:
-    vault = get_vault(vault_name)
-    path = vault.get("path")
-    if not isinstance(path, str):
-        raise ValueError(f"Invalid path for vault: {vault_name}")
-
-    return Path(path)
-
-
-def get_readable_vault_path(vault_name: str) -> Path:
-    vault = get_vault(vault_name)
-
-    if vault.get("read") is not True:
-        raise PermissionError(vault_name)
-
-    path = vault.get("path")
-
-    if not isinstance(path, str):
-        raise ValueError(f"Invalid path for vault: {vault_name}")
-
-    return Path(path).resolve()
+def list_writable_vault_names() -> list[str]:
+    vaults = load_vault_config()
+    return sorted(
+        name
+        for name, config in vaults.items()
+        if isinstance(config, dict) and config.get("write") is True
+    )

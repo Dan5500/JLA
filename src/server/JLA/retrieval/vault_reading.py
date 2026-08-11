@@ -30,3 +30,4 @@ def read_vault_note(vault: Path, relative_path: str) -> str:
     logger.info("Reading vault note: %s", relative_path)
     with open(target, "r", encoding="utf-8") as f:
         return f.read()
+
