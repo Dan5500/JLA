@@ -30,6 +30,7 @@ def get_connection() -> sqlite3.Connection:
         return conn
     except sqlite3.Error:
         logger.exception("Failed to open database connection to %s", DB_PATH)
+        print("Does /data/jla.db exist? is DB_PATH set up correctly?")
         raise
 
 def initialize_database(conn: sqlite3.Connection) -> None:

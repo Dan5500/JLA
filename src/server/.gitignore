@@ -4,3 +4,4 @@ config/models.yaml
 config/permissions.yaml
 .env
 logs/
+data/jla.db
