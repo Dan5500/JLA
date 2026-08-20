@@ -3,7 +3,23 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def create_testing_table(conn: sqlite3.Connection) -> None:
+    """
+    Create a testing table for demonstration purposes.
 
+    Args:
+        conn (sqlite3.Connection): The SQLite database connection.
+    """
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS testing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            value TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    logger.info("Ensured testing table exists")
 def create_conversations_table(conn: sqlite3.Connection) -> None:
     """
     Create the conversations table if it does not already exist.

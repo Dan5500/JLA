@@ -12,6 +12,8 @@ from retrieval.vault_reading import read_vault_note
 from config import ConfigFileMissingError, ConfigMalformedError
 from permissions import get_readable_vault_path, get_writable_vault_path, list_readable_vault_names, list_writable_vault_names
 from memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
+from database.handling import list_db_tables, read_db_table, insert_row, get_schema, read_row, update_row
+from database.connection import get_connection, initialize_database
 
 script_dir = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = script_dir.parent
@@ -26,6 +28,14 @@ def main() -> None:
     setup_logging()
     logger.info("JLA started")
     print("Welcome to the JLA server!\nThis is a temporary CLI for setting up the JLA backend.\nType 'help' for a list of commands")
+
+    # maybe create connections on command input, but for now, 
+    # the connection to the database is created at the start of the server and closed at the end
+    
+    # initalize and get database connection
+    conn = get_connection()
+    initialize_database(conn)
+
     alive = True
 
     while alive:
@@ -53,6 +63,7 @@ def main() -> None:
                         "\t\ttest-all - runs the full test suite\n"
                         "\tread <command> - reads data from specified source\n"
                         "\t\tvault <vault_name> <note_relative_path> - reads a note from the specified vault\n"
+                        "\t\tdatabase <table_name> - reads data from the specified database table\n"
                         "\twrite <command> - writes data to specified destination\n"
                         "\t\tvault <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
                         "\tedit <command> - edit an existing note in the vault\n"
@@ -186,7 +197,7 @@ def main() -> None:
                             case _:
                                 print(f"Unknown write command: {command[1]}")
                     except IndexError:
-                        print("Usage: write <write/command> [args]\n\nCommands:\n\tvault - writes a note to the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <content> - writes the specified content to the specified note in the configured vault")
+                        print('''Usage: write <write/command> [args]\n\nCommands:\n\tvault - writes a note to the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <content> - writes the specified content to the specified note in the configured vault''')
 
                 case "edit":
                     try:
@@ -228,12 +239,120 @@ def main() -> None:
                                     print("Available writable vaults:")
                                     for vault_name in list_writable_vault_names():
                                         print(f"\t{vault_name}")
+                            case _:
+                                print(f"Unknown edit command: {command[1]}")
                     except IndexError:
                         print("Usage: edit <edit/command> [args]\n\nCommands:\n\tvault - edits a note in the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <line_number> <new_content> - edits the specified line in the specified note in the configured vault")
+
+                case "database":
+                    try:
+                        match command[1]:
+                            case "list-tables":
+                                print(list_db_tables(conn))
+
+                            case "schema":
+                                table_name = command[2]
+                                print(get_schema(conn, table_name))
+
+                            case "read-table":
+                                try:
+                                    table_name = command[2]
+                                    print(read_db_table(conn, table_name))
+                                except ValueError as e:
+                                    print(f"ValueError: {e}")
+                                except IndexError:
+                                    print("Usage: read database <table_name>")
+                                    print(list_db_tables(conn))
+
+                            case "insert-row":
+                                table_name = command[2]
+                                i = 3
+                                # get parameters (this is a cooked method, fix it ltr; works for now)
+                                values = []
+                                while i<len(command):
+                                    values.append(command[i])
+                                    i = i+1
+
+                                # insert row & give feedback if fails
+                                try:
+                                    insert_row(conn, table_name, values)
+
+                                    print("Do you want to save? y/n")
+                                    print(f"inputted values: {read_row(conn, table_name)}")
+                                    answer = input("? ")
+                                    if answer.lower() in ["y", "yes"]:
+                                        conn.commit()
+                                except Exception as e:
+                                    print(f"Error: {e}")
+
+                            case "update-row":
+                                table_name = command[2]
+                                row_id = command[3]
+                                col_name = command[4]
+                                value = command[5]
+
+                                # update row & give feedback if fails
+                                try:
+                                    update_row(conn, table_name, row_id, col_name, value)
+
+                                    print("Do you want to save? y/n")
+                                    print(f"inputted values: {read_row(conn, table_name, row_id)}")
+                                    answer = input("? ")
+                                    if answer.lower() in ["y", "yes"]:
+                                        conn.commit()
+                                except Exception as e:
+                                    print(f"Error: {e}")
+
+                            case "save":
+                                print("Are you sure? This cannot be undone. y/n")
+                                answer = input("? ")
+                                if answer.lower() in ["y", "yes"]:
+                                    conn.commit()
+
+                            case "reload":
+                                print("All unsaved changes will be deleted. Are you sure? y/n")
+                                answer = input("? ")
+                                if answer.lower() in ["y", "yes"]:
+                                    print("Reloading database...")
+                                    conn = get_connection()
+
+                            case "read-row":
+                                table_name = command[2]
+                                try:
+                                    try:
+                                        row_id = command[3]
+                                        print(read_row(conn, table_name, row_id))
+                                    except IndexError:
+                                        print(read_row(conn, table_name))
+                                except Exception as e:
+                                    print(e)
+
+                    except IndexError:
+                        print('''Usage: database <command> [args]
+
+Commands:
+    save - saves all changes made to database
+    reload - trashes all unsaved changes
+    list-tables - lists all available tables
+    schema - describes the schema for a specific table
+    insert-row - inserts a row into a specified table
+    update-row - updates a specified row in a specified table
+    read-table - reads all rows in a table
+    read-row - reads a specified row in a specified table. If no row id is specified, the latest row is read
+Arguments:
+    schema <table_name> 
+    insert-row <table_name> <value1> <value2> <value3>...
+        MAKE SURE THE DATA TYPES ARE RIGHT FOR THE TABLE'S SCHEMA
+        to view a tables schema, run the schema subcommand
+    update-row <table_name> <row_id> <col_name> <value>
+        MAKE SURE THE DATA TYPES ARE RIGHT FOR THE TABLE'S SCHEMA
+    read-table <table_name>
+    read-row <table_name> [row_id]''')
 
                 case _:
                     logger.debug("Unknown CLI command received: %s", command)
                     print(f"Unknown command: {command}")
+        
         except (ConfigFileMissingError, ConfigMalformedError) as exc:
             logger.error("Configuration error: %s", exc, exc_info=True)
             print(exc)
@@ -242,4 +361,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    #start_backend() - backend doesnt really exist as of rn
+    # i've just been making a CLI to test all the tools that I make
     main()
+else:
+    print("not running the CLI, starting only backend server")
+    # not yet implemented btw. 
+    # in order to get to this point, you'd run "import main" in another file
+    # and it'll start running everything in this else block.
+    # the move is to make another function that does everything
+    # it'll be smth like so:
+    
+    #start_backend()

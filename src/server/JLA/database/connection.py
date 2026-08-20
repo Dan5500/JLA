@@ -6,6 +6,7 @@ from .schema import (
     create_conversations_table,
     create_messages_table,
     create_tool_calls_table,
+    create_testing_table
 )
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         create_conversations_table(conn)
         create_messages_table(conn)
         create_tool_calls_table(conn)
+        create_testing_table(conn)
         logger.info("Database initialized successfully")
     except Exception:
         logger.exception("Failed to initialize database")

@@ -2,7 +2,7 @@ import errno
 from pathlib import Path
 import logging
 
-from JLA.config.vaults import get_vault, load_vault_config
+from config.vaults import get_vault, load_vault_config
 
 logger = logging.getLogger(__name__)
 
