@@ -20,7 +20,7 @@ def load_vault_config() -> dict[str, dict[str, Any]]:
 
     return vaults
 
-
+# maybe return a vault class?
 def get_vault(vault_name: str) -> dict[str, Any]:
     vaults = load_vault_config()
     if vault_name not in vaults:

@@ -3,9 +3,11 @@ import logging
 import os
 import sys
 import pathlib
-import readline # enable arrow key usage
+import readline # enable shell-like input
 import pytest
 import shlex
+
+from pathlib import Path
 
 from logging_config import setup_logging
 from retrieval.vault_reading import read_vault_note
@@ -14,6 +16,8 @@ from permissions import get_readable_vault_path, get_writable_vault_path, list_r
 from memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
 from database.handling import list_db_tables, read_db_table, insert_row, get_schema, read_row, update_row
 from database.connection import get_connection, initialize_database
+from retrieval.discovery import find_all_notes
+from retrieval.parsing import parse_file
 
 script_dir = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = script_dir.parent
@@ -54,29 +58,35 @@ def main() -> None:
                         "Available commands:\n"
                         "\thelp - displays this help message\n"
                         "\tclear - clears the terminal screen\n"
-                        "\texit [-f] - exits the server\n"
+                        "\texit/quit/close [-f/r] - exits the server\n"
                         "\t\t-f - force exit without confirmation\n"
-                        "\tquit [-f] - alias for exit\n"
-                        "\tclose [-f] - alias for exit\n"
+                        "\t\t-r - restart the server\n"
+                        "\tlog <message> - logs a message to the server log at INFO level\n"
                         "\ttest <command/test> - runs test commands\n"
                         "\t\tlist - lists available tests\n"
                         "\t\ttest-all - runs the full test suite\n"
-                        "\tread <command> - reads data from specified source\n"
-                        "\t\tvault <vault_name> <note_relative_path> - reads a note from the specified vault\n"
-                        "\t\tdatabase <table_name> - reads data from the specified database table\n"
-                        "\twrite <command> - writes data to specified destination\n"
-                        "\t\tvault <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
-                        "\tedit <command> - edit an existing note in the vault\n"
-                        "\t\tvault <vault_name> <note_relative_path> <line_number> <new_content> - edits a specific line in a note\n"
+                        "\tvault <command> - manages vault notes\n"
+                        "\t\tread <vault_name> <note_relative_path> - reads a note from the specified vault\n"
+                        "\t\twrite <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
+                        "\t\tedit <vault_name> <note_relative_path> <line_number> <new_content> - edits a specific line in a note\n"
                     )
                 # "exit" or "quit" command to exit the server
                 case "exit" | "quit" | "close":
                     try:
                         match command[1]:
+                            # dont use force exit often, its not good for things
                             case "-f":
                                 logger.info("Force exit requested")
                                 print("Force exiting JLA server...")
                                 sys.exit(0)
+                            case "-r":
+                                logger.info("Restart requested")
+                                print("Restarting JLA server...")
+                                os.system("cls" if os.name == "nt" else "clear")
+                                # clean up
+                                conn.close()
+                                # restart the script
+                                os.execv(sys.executable, [sys.executable] + sys.argv)
                             case _:
                                 print("invalid argument(s)")
                     except IndexError:
@@ -85,11 +95,19 @@ def main() -> None:
                         if confirm.lower() in ["y", "yes"]:
                             logger.info("JLA shutting down normally")
                             print("Exiting JLA server...")
-                            alive = False
 
+                            # clean up
+                            conn.close()
+
+                            # stop loop, thus ending the program
+                            alive = False
                 case "clear":
                         os.system('cls' if os.name == 'nt' else 'clear')
-
+                case "log":
+                    try:
+                        logger.info(f"User-Inputted log message: {command[1]}")
+                    except IndexError:
+                        print('Usage: log "<message>"\n\tUse quotes around your message if it contains spaces.')
                 # "test" command for running tests
                 case "test":
                     try:
@@ -101,6 +119,7 @@ def main() -> None:
                                     "\tvault - vault handling tests in tests/test_vault.py\n"
                                     "\tconfig - configuration loading tests in tests/test_config.py\n"
                                     "\ttest-all - runs the full test suite\n"
+                                    "\tcustom - runs whatever custom test is currently hardcoded"
                                 )
                             case "test-all":
                                 print("Running all tests...")
@@ -114,19 +133,25 @@ def main() -> None:
                             case "config":
                                 print("Running config tests from tests/test_config.py...")
                                 pytest.main([str(TESTS_DIR / "test_config.py")])
+                            case "custom":
+                                print("testing parse_file()...")
+                                try:
+                                    print(parse_file(Path("/home/daniel/Documents/ObsidianVaults/assistant-memory/test2.md"))) # sucks that i have to write the whole path
+                                except Exception as e:
+                                    print(f"Error: {e}")
                             case _:
                                 print(f"Unknown test command: {command[1]}")
                     except IndexError:
-                        print("Usage: \n\t test <test/command> [args]\n\nCommands:\n\tlist - lists available tests/groups\n\ttest-all - runs all tests\n\ttest-database - runs the database test group\nArguments:\n\tnone yet!")
-                case "read":
+                        print("Usage: \n\t test <test/command> [args]\n\nCommands:\n\tlist - lists available tests/groups\n\ttest-all - runs all tests\nArguments:\n\tnone yet!")
+                case "vault":
                     try:
                         match command[1]:
-                            case "vault":
+                            case "read":
                                 try:
                                     vault_name = command[2]
                                     note_path = command[3]
                                 except IndexError:
-                                    print("Usage: read vault <vault_name> <note_relative_path>")
+                                    print("Usage: vault read <vault_name> <note_relative_path>")
                                     print("Available readable vaults:")
                                     for vault_name in list_readable_vault_names():
                                         print(f"\t{vault_name}")
@@ -151,15 +176,8 @@ def main() -> None:
                                     print("Invalid note path: path traversal outside the vault is not allowed.")
                                 except FileNotFoundError:
                                     print(f"Note not found: {note_path}")
-                            case _:
-                                print(f"Unknown read command: {command[1]}")
-                    except IndexError:
-                        print("Usage: read <read/command> [args]\n\nCommands:\n\tvault - reads a note from the vault\nArguments:\n\tvault <vault_name> <note_relative_path> - reads the specified note from the configured vault")
 
-                case "write":
-                    try:
-                        match command[1]:
-                            case "vault":
+                            case "write":
                                 try:
                                     vault_name = command[2]
                                     note_path = command[3]
@@ -188,21 +206,14 @@ def main() -> None:
                                 except ValueError:
                                     print("Invalid note path: path traversal outside the vault is not allowed.")
                                 except IndexError:
-                                    print("Usage: write vault <vault_name> <note_relative_path> <content>")
+                                    print("Usage: vault write <vault_name> <note_relative_path> <content>")
                                     print("--- MAKE SURE TO USE QUOTES AROUND THE CONTENT AND NOTE PATH IF THEY CONTAIN SPACES! ---")
                                     print("Available writable vaults:")
                                     for vault_name in list_writable_vault_names():
                                         print(f"\t{vault_name}")
                                     continue
-                            case _:
-                                print(f"Unknown write command: {command[1]}")
-                    except IndexError:
-                        print('''Usage: write <write/command> [args]\n\nCommands:\n\tvault - writes a note to the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <content> - writes the specified content to the specified note in the configured vault''')
 
-                case "edit":
-                    try:
-                        match command[1]:
-                            case "vault":
+                            case "edit":
                                 try:
                                     vault_name = command[2]
                                     note_path = command[3]
@@ -234,15 +245,15 @@ def main() -> None:
                                     print(f"Line index out of bounds for editing: {note_path}")
                                     print("Make sure the line number is valid for the specified note.")
                                 except IndexError:
-                                    print("Usage: edit vault <vault_name> <note_relative_path> <line_number> <new_content>")
+                                    print("Usage: vault edit <vault_name> <note_relative_path> <line_number> <new_content>")
                                     print("--- MAKE SURE TO USE QUOTES AROUND THE CONTENT AND NOTE PATH IF THEY CONTAIN SPACES! ---")
                                     print("Available writable vaults:")
                                     for vault_name in list_writable_vault_names():
                                         print(f"\t{vault_name}")
                             case _:
-                                print(f"Unknown edit command: {command[1]}")
+                                print(f"Unknown vault command: {command[1]}")
                     except IndexError:
-                        print("Usage: edit <edit/command> [args]\n\nCommands:\n\tvault - edits a note in the vault\nArguments:\n\tvault <vault_name> <note_relative_path> <line_number> <new_content> - edits the specified line in the specified note in the configured vault")
+                        print("Usage: vault <read|write|edit> [args]\n\nCommands:\n\tread - reads a note from the vault\n\twrite - writes a note to the vault\n\tedit - edits a note in the vault\nArguments:\n\tvault read <vault_name> <note_relative_path>\n\tvault write <vault_name> <note_relative_path> <content>\n\tvault edit <vault_name> <note_relative_path> <line_number> <new_content>")
 
                 case "database":
                     try:
