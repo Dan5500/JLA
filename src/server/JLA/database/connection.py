@@ -3,7 +3,10 @@ import pathlib
 import logging
 
 from .schema import (
+    create_chunks_table,
     create_conversations_table,
+    create_links_table,
+    create_notes_table,
     create_messages_table,
     create_tool_calls_table,
     create_testing_table
@@ -26,6 +29,7 @@ def get_connection() -> sqlite3.Connection:
     try:
         logger.debug("Opening database connection to %s", DB_PATH)
         conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")
         logger.debug("Database connection opened")
         return conn
     except sqlite3.Error:
@@ -41,9 +45,13 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         conn (sqlite3.Connection): The connection object to the SQLite database.
     """
     try:
+        conn.execute("PRAGMA foreign_keys = ON")
         create_conversations_table(conn)
         create_messages_table(conn)
         create_tool_calls_table(conn)
+        create_notes_table(conn)
+        create_links_table(conn)
+        create_chunks_table(conn)
         create_testing_table(conn)
         logger.info("Database initialized successfully")
     except Exception:

@@ -66,12 +66,12 @@ def read_row(conn: sqlite3.Connection, table_name: str, row_id: int = -1): # may
 
     if(row_id == -1):
         # assuming every table has the automatic/autoincrement primary key first column id
-        cursor.execute(f"SELECT * FROM {table_name} WHERE id = (SELECT MAX(id) FROM {table_name})")
+        cursor.execute(f"SELECT * FROM {table_name} WHERE rowid = (SELECT MAX(rowid) FROM {table_name})")
         row = cursor.fetchall()
         logger.debug(f"Read latest row in table: {table_name}")
     else:
         # assuming every table has the automatic/autoincrement primary key first column id
-        cursor.execute(f"SELECT * FROM {table_name} WHERE id = {row_id}")
+        cursor.execute(f"SELECT * FROM {table_name} WHERE rowid = {row_id}")
         row = cursor.fetchall()
         logger.debug(f"Read row #{str(row_id)} in table: {table_name}")
 

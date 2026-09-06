@@ -16,6 +16,7 @@ from permissions import get_readable_vault_path, get_writable_vault_path, list_r
 from memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
 from database.handling import list_db_tables, read_db_table, insert_row, get_schema, read_row, update_row
 from database.connection import get_connection, initialize_database
+from database.vault_sync import sync_all_vaults
 from retrieval.discovery import find_all_notes
 from retrieval.parsing import parse_file
 
@@ -39,6 +40,9 @@ def main() -> None:
     # initalize and get database connection
     conn = get_connection()
     initialize_database(conn)
+
+    # sync database with vaults
+    sync_all_vaults(conn)
 
     alive = True
 
@@ -65,6 +69,16 @@ def main() -> None:
                         "\ttest <command/test> - runs test commands\n"
                         "\t\tlist - lists available tests\n"
                         "\t\ttest-all - runs the full test suite\n"
+                        "\tdatabase <command> - manages the SQLite index\n"
+                        "\t\tlist-tables - lists all available tables\n"
+                        "\t\tschema <table_name> - describes a table schema\n"
+                        "\t\tread-table <table_name> - reads all rows in a table\n"
+                        "\t\tread-row <table_name> [row_id] - reads a specific row\n"
+                        "\t\tinsert-row <table_name> <values...> - inserts a row into a table\n"
+                        "\t\tupdate-row <table_name> <row_id> <col_name> <value> - updates a row\n"
+                        "\t\tsave - saves database changes\n"
+                        "\t\treload - reloads the database connection\n"
+                        "\t\tsync [full] - scans vault markdown and refreshes the index\n"
                         "\tvault <command> - manages vault notes\n"
                         "\t\tread <vault_name> <note_relative_path> - reads a note from the specified vault\n"
                         "\t\twrite <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
@@ -134,9 +148,9 @@ def main() -> None:
                                 print("Running config tests from tests/test_config.py...")
                                 pytest.main([str(TESTS_DIR / "test_config.py")])
                             case "custom":
-                                print("testing parse_file()...")
+                                print("no test hardcoded")
                                 try:
-                                    print(parse_file(Path("/home/daniel/Documents/ObsidianVaults/assistant-memory/test2.md"))) # sucks that i have to write the whole path
+                                    print("make one later")
                                 except Exception as e:
                                     print(f"Error: {e}")
                             case _:
@@ -320,6 +334,16 @@ def main() -> None:
                                 if answer.lower() in ["y", "yes"]:
                                     conn.commit()
 
+                            case "sync":
+                                full_rebuild = len(command) > 2 and command[2] == "full"
+                                summaries = sync_all_vaults(conn, full_rebuild=full_rebuild)
+                                for summary in summaries:
+                                    print(
+                                        f"Synced {summary.vault_name}: "
+                                        f"new={summary.new}, changed={summary.changed}, "
+                                        f"unchanged={summary.unchanged}, deleted={summary.deleted}"
+                                    )
+
                             case "reload":
                                 print("All unsaved changes will be deleted. Are you sure? y/n")
                                 answer = input("? ")
@@ -350,6 +374,7 @@ Commands:
     update-row - updates a specified row in a specified table
     read-table - reads all rows in a table
     read-row - reads a specified row in a specified table. If no row id is specified, the latest row is read
+    sync [full] - scans readable vault markdown files and updates the index
 Arguments:
     schema <table_name> 
     insert-row <table_name> <value1> <value2> <value3>...
@@ -370,6 +395,16 @@ Arguments:
         except IndexError:
             print("No command entered. Please enter a command.")
 
+def start_backend() -> None:
+    setup_logging()
+    logger.info("Starting JLA backend server...")
+
+    # initalize and get database connection
+    conn = get_connection()
+    initialize_database(conn)
+
+    # sync database with vaults
+    sync_all_vaults(conn)
 
 if __name__ == "__main__":
     #start_backend() - backend doesnt really exist as of rn
@@ -383,4 +418,4 @@ else:
     # the move is to make another function that does everything
     # it'll be smth like so:
     
-    #start_backend()
+    start_backend()
