@@ -1,6 +1,8 @@
 # from pathlib import Path
 from dataclasses import dataclass, field
 
+from .retriever import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes
+
 @dataclass
 class Link:
     target_name: str # content of the string (what it displays)

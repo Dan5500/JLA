@@ -19,6 +19,7 @@ from database.connection import get_connection, initialize_database
 from database.vault_sync import sync_all_vaults
 from retrieval.discovery import find_all_notes
 from retrieval.parsing import parse_file
+from retrieval import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes
 
 script_dir = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = script_dir.parent
@@ -83,6 +84,7 @@ def main() -> None:
                         "\t\tread <vault_name> <note_relative_path> - reads a note from the specified vault\n"
                         "\t\twrite <vault_name> <note_relative_path> <content> - writes a note to the specified vault\n"
                         "\t\tedit <vault_name> <note_relative_path> <line_number> <new_content> - edits a specific line in a note\n"
+                        "\t\tsearch <vault_name> <query> - searches for notes in the specified vault\n"
                     )
                 # "exit" or "quit" command to exit the server
                 case "exit" | "quit" | "close":
@@ -264,10 +266,22 @@ def main() -> None:
                                     print("Available writable vaults:")
                                     for vault_name in list_writable_vault_names():
                                         print(f"\t{vault_name}")
+                            case "search":
+                                try:
+                                    vault_name = command[2]
+                                    query = command[3]
+                                    # implement search functionality here   
+                                    print(f"Searching for '{query}' in vault '{vault_name}'...")
+                                    notes = retrieve_notes(conn, query, vault_name)
+
+                                    # Placeholder for actual search results
+                                    print(f"Search results: {notes.display_text()}")
+                                except IndexError:
+                                    print('Usage: vault search <vault_name> "<query>"')
                             case _:
                                 print(f"Unknown vault command: {command[1]}")
                     except IndexError:
-                        print("Usage: vault <read|write|edit> [args]\n\nCommands:\n\tread - reads a note from the vault\n\twrite - writes a note to the vault\n\tedit - edits a note in the vault\nArguments:\n\tvault read <vault_name> <note_relative_path>\n\tvault write <vault_name> <note_relative_path> <content>\n\tvault edit <vault_name> <note_relative_path> <line_number> <new_content>")
+                        print("Usage: vault <read|write|edit> [args]\n\nCommands:\n\tread - reads a note from the vault\n\twrite - writes a note to the vault\n\tedit - edits a note in the vault\n\tsearch - searches for notes in the vault\nArguments:\n\tvault read <vault_name> <note_relative_path>\n\tvault write <vault_name> <note_relative_path> <content>\n\tvault edit <vault_name> <note_relative_path> <line_number> <new_content>\n\tvault search <vault_name> <query>")
 
                 case "database":
                     try:
