@@ -54,3 +54,9 @@ def test_build_chunks_from_headers_closes_top_level_siblings():
     assert chunks[1].name == "Two"
     assert chunks[1].start_line == 6
     assert chunks[1].end_line == 10
+
+
+def test_build_chunks_keeps_headingless_content_as_preamble():
+    chunks = build_chunks_from_headers([], total_lines=3)
+
+    assert [(chunk.name, chunk.start_line, chunk.end_line) for chunk in chunks] == [("(preamble)", 1, 3)]

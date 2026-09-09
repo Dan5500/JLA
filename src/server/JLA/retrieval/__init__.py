@@ -1,14 +1,11 @@
-# from pathlib import Path
 from dataclasses import dataclass, field
-
-from .retriever import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes
 
 @dataclass
 class Link:
     target_name: str # content of the string (what it displays)
     target_path: str | None = None # path to target relative to vault root
-    # header: str | None = None # name of header its found under
     parent_path: str | None = None # path to the parent file
+    target_section: str | None = None
 
 @dataclass
 class Header:
@@ -22,6 +19,8 @@ class Chunk:
     start_line: int
     end_line: int
     subchunks: list["Chunk"] = field(default_factory=list)
+    heading_path: str = ""
+    content_hash: str | None = None
 
 @dataclass
 class Note:
@@ -34,4 +33,4 @@ class Note:
     links: list[Link] = field(default_factory=list)
     backlinks: list[Link] = field(default_factory=list) # links from other notes that goes to this note
 
-    # maybe add a static method that take a note path and returns a parsed Note class
+from .retriever import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes

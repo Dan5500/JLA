@@ -1,7 +1,7 @@
 from pathlib import Path
 import logging
 
-from permissions import get_readable_vault_path
+from ..permissions import get_readable_vault_path
 
 logger = logging.getLogger(__name__)
 

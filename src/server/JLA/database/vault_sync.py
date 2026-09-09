@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import sqlite3
 from dataclasses import dataclass, field
 from itertools import count
 from pathlib import Path
 
-from config.vaults import list_readable_vault_names
-from permissions import get_readable_vault_path
-from retrieval import Chunk, Link, Note
-from retrieval.parsing import parse_markdown
+from ..config.vaults import list_readable_vault_names
+from ..permissions import get_readable_vault_path
+from ..retrieval import Chunk, Link, Note
+from ..retrieval.parsing import parse_markdown
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class NoteRecord:
     file_hash: str
     modified_time: float
     file_size: int
+    index_status: str
 
 # the underscore in the method name is the same as type hinting a private method
 # there are no private methods in python, so this kinda shows that the method is meant to be private
@@ -59,7 +61,7 @@ def _load_note_records(conn: sqlite3.Connection, vault_name: str) -> dict[str, N
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT note_id, file_path, file_hash, modified_time, file_size
+        SELECT note_id, file_path, file_hash, modified_time, file_size, index_status
         FROM notes
         WHERE vault = ?
         """,
@@ -67,12 +69,13 @@ def _load_note_records(conn: sqlite3.Connection, vault_name: str) -> dict[str, N
     )
 
     records: dict[str, NoteRecord] = {}
-    for note_id, file_path, file_hash, modified_time, file_size in cursor.fetchall():
+    for note_id, file_path, file_hash, modified_time, file_size, index_status in cursor.fetchall():
         records[str(file_path)] = NoteRecord(
             note_id=int(note_id),
             file_hash=str(file_hash),
             modified_time=float(modified_time),
             file_size=int(file_size),
+            index_status=str(index_status),
         )
     return records
 
@@ -120,15 +123,17 @@ def _upsert_note_metadata(
             modified_time,
             file_size,
             title,
+            metadata_json,
             index_status,
             last_indexed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'indexed', CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'indexed', CURRENT_TIMESTAMP)
         ON CONFLICT(vault, file_path) DO UPDATE SET
             file_hash = excluded.file_hash,
             modified_time = excluded.modified_time,
             file_size = excluded.file_size,
             title = excluded.title,
+            metadata_json = excluded.metadata_json,
             index_status = excluded.index_status,
             last_indexed_at = CURRENT_TIMESTAMP
         """,
@@ -139,6 +144,7 @@ def _upsert_note_metadata(
             modified_time,
             file_size,
             note.name,
+            json.dumps(note.metadata, default=str, sort_keys=True),
         ),
     )
 
@@ -159,7 +165,10 @@ def _insert_chunk_tree(
     chunk_index: int,
     parent_chunk_id: int | None,
     counter: count,
+    lines: list[str],
 ) -> None:
+    chunk_text = "\n".join(lines[chunk.start_line - 1:chunk.end_line])
+    content_hash = _hash_bytes(chunk_text.encode("utf-8"))
     cursor.execute(
         """
         INSERT INTO chunks (
@@ -167,31 +176,36 @@ def _insert_chunk_tree(
             parent_chunk_id,
             chunk_index,
             name,
+            heading_path,
             start_line,
-            end_line
+            end_line,
+            content_hash
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             note_id,
             parent_chunk_id,
             chunk_index,
             chunk.name,
+            chunk.heading_path,
             chunk.start_line,
             chunk.end_line,
+            content_hash,
         ),
     )
     current_chunk_id = int(cursor.lastrowid)
     for subchunk in chunk.subchunks:
-        _insert_chunk_tree(cursor, note_id, subchunk, next(counter), current_chunk_id, counter)
+        _insert_chunk_tree(cursor, note_id, subchunk, next(counter), current_chunk_id, counter, lines)
 
 
-def _replace_chunks(conn: sqlite3.Connection, note_id: int, chunks: list[Chunk]) -> None:
+def _replace_chunks(conn: sqlite3.Connection, note_id: int, chunks: list[Chunk], content: str) -> None:
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chunks WHERE note_id = ?", (note_id,))
     chunk_counter = count()
+    lines = content.splitlines()
     for chunk in chunks:
-        _insert_chunk_tree(cursor, note_id, chunk, next(chunk_counter), None, chunk_counter)
+        _insert_chunk_tree(cursor, note_id, chunk, next(chunk_counter), None, chunk_counter, lines)
 
 
 def _replace_links(
@@ -245,7 +259,7 @@ def _replace_links(
                 link.target_name,
                 resolved_path,
                 target_note_id,
-                None,
+                link.target_section,
             ),
         )
         link_index += 1
@@ -263,16 +277,7 @@ def _sync_note(
     file_hash = _hash_bytes(data)
     stat = file.stat()
 
-    if note_record is not None and note_record.file_hash == file_hash:
-        with conn:
-            conn.execute(
-                """
-                UPDATE notes
-                SET modified_time = ?, file_size = ?, last_indexed_at = CURRENT_TIMESTAMP
-                WHERE vault = ? AND file_path = ?
-                """,
-                (stat.st_mtime, stat.st_size, vault_name, _relative_note_path(get_readable_vault_path(vault_name), file)),
-            )
+    if note_record is not None and note_record.file_hash == file_hash and note_record.index_status == "indexed":
         return "unchanged", note_record.note_id
 
     content = data.decode("utf-8")
@@ -281,9 +286,29 @@ def _sync_note(
     with conn:
         note_id = _upsert_note_metadata(conn, note, file_hash, stat.st_mtime, stat.st_size)
         _replace_links(conn, note, note_id, note.links, current_paths, current_paths_by_stem)
-        _replace_chunks(conn, note_id, note.chunks)
+        _replace_chunks(conn, note_id, note.chunks, content)
 
     return ("new" if note_record is None else "changed"), note_id
+
+
+def _resolve_link_ids(conn: sqlite3.Connection, vault_name: str) -> None:
+    """Resolve forward links after every note in a vault has been inserted."""
+    with conn:
+        conn.execute(
+            """
+            UPDATE links
+            SET target_note_id = (
+                SELECT target.note_id
+                FROM notes AS source
+                JOIN notes AS target
+                  ON target.vault = source.vault
+                 AND target.file_path = links.target_path
+                WHERE source.note_id = links.source_note_id
+            )
+            WHERE source_note_id IN (SELECT note_id FROM notes WHERE vault = ?)
+            """,
+            (vault_name,),
+        )
 
 
 def sync_vault(conn: sqlite3.Connection, vault_name: str, full_rebuild: bool = False) -> VaultSyncSummary:
@@ -337,6 +362,8 @@ def sync_vault(conn: sqlite3.Connection, vault_name: str, full_rebuild: bool = F
         except Exception as exc:
             logger.exception("Failed to sync note %s/%s", vault_name, relative_path)
             summary.errors.append(f"{vault_name}/{relative_path}: {exc}")
+
+    _resolve_link_ids(conn, vault_name)
 
     logger.debug("Vault sync summary for %s: %s", vault_name, summary)
     return summary

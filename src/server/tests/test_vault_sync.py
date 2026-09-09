@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import config.vaults as vault_config
+import JLA.config.vaults as vault_config
 from JLA.database.connection import initialize_database
 from JLA.database import vault_sync
 
@@ -79,7 +79,9 @@ def test_new_note_insertion(vault_setup, conn):
     assert row[6] == "alpha"
     assert row[7] == "indexed"
     assert read_links(conn) == []
-    assert read_chunks(conn) == []
+    chunks = read_chunks(conn)
+    assert len(chunks) == 1
+    assert chunks[0][3] == "Alpha"
 
 
 def test_unchanged_note_is_skipped(vault_setup, conn, monkeypatch):

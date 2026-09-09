@@ -3,6 +3,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _ensure_column(conn: sqlite3.Connection, table: str, name: str, definition: str) -> None:
+    """Add retrieval columns to existing local indexes without deleting data."""
+    names = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if name not in names:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+        if table == "notes":
+            conn.execute("UPDATE notes SET index_status = 'stale'")
+        conn.commit()
+
 # template for creating a table in the database, making this faster/easier to create tables
 def _create_table(conn: sqlite3.Connection, sql: str, table_name: str) -> None:
     cursor = conn.cursor()
@@ -43,6 +53,7 @@ def create_notes_table(conn: sqlite3.Connection) -> None:
             UNIQUE(vault, file_path)
         )
     ''', "notes")
+    _ensure_column(conn, "notes", "metadata_json", "TEXT NOT NULL DEFAULT '{}'")
 
 # links table: for indexing outgoing links in vault markdown files
 def create_links_table(conn: sqlite3.Connection) -> None:
@@ -79,6 +90,8 @@ def create_chunks_table(conn: sqlite3.Connection) -> None:
             UNIQUE(note_id, chunk_index)
         )
     ''', "chunks")
+    _ensure_column(conn, "chunks", "heading_path", "TEXT NOT NULL DEFAULT ''")
+    _ensure_column(conn, "chunks", "content_hash", "TEXT NOT NULL DEFAULT ''")
 
 # conversations table: for storing conversations with the AI
 def create_conversations_table(conn: sqlite3.Connection) -> None:

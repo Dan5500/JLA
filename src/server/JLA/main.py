@@ -9,17 +9,21 @@ import shlex
 
 from pathlib import Path
 
-from logging_config import setup_logging
-from retrieval.vault_reading import read_vault_note
-from config import ConfigFileMissingError, ConfigMalformedError
-from permissions import get_readable_vault_path, get_writable_vault_path, list_readable_vault_names, list_writable_vault_names
-from memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
-from database.handling import list_db_tables, read_db_table, insert_row, get_schema, read_row, update_row
-from database.connection import get_connection, initialize_database
-from database.vault_sync import sync_all_vaults
-from retrieval.discovery import find_all_notes
-from retrieval.parsing import parse_file
-from retrieval import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    __package__ = "JLA"
+
+from .logging_config import setup_logging
+from .retrieval.vault_reading import read_vault_note
+from .config import ConfigFileMissingError, ConfigMalformedError
+from .permissions import get_readable_vault_path, get_writable_vault_path, list_readable_vault_names, list_writable_vault_names
+from .memory.vault_writing import LineIndexError, write_vault_note, edit_vault_note
+from .database.handling import list_db_tables, read_db_table, insert_row, get_schema, read_row, update_row
+from .database.connection import get_connection, initialize_database
+from .database.vault_sync import sync_all_vaults
+from .retrieval.discovery import find_all_notes
+from .retrieval.parsing import parse_file
+from .retrieval import QueryIntent, RetrievalResult, RetrievedChunk, RetrievedNote, parse_query_intent, retrieve_notes
 
 script_dir = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = script_dir.parent
